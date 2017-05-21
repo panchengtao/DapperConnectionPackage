@@ -14,7 +14,11 @@ namespace DapperDemo
 
         private static void Main(string[] args)
         {
+            BuckInsert();
+            BuckInsert();
+            BuckInsert();
             DeleteAfterUpdating();
+            GetPersonList().ForEach(c=>Console.WriteLine(c.UserName));
         }
 
         public static List<Person> GetPersonList()
@@ -29,9 +33,9 @@ namespace DapperDemo
             return people;
         }
 
-        public static void BuckInsert()
+        public static bool BuckInsert()
         {
-            ExecuteWithoutTransaction(conn =>
+            return ExecuteWithTransaction((conn, trans) =>
             {
                 var r = conn.Execute(
                     @"insert Person(username, password,age,registerDate,address) values (@a, @b,@c,@d,@e)",
@@ -40,44 +44,43 @@ namespace DapperDemo
                         new {a = 1, b = 1, c = 1, d = DateTime.Now, e = 1},
                         new {a = 2, b = 2, c = 2, d = DateTime.Now, e = 2},
                         new {a = 3, b = 3, c = 3, d = DateTime.Now, e = 3}
-                    });
+                    },trans);
+
+                return r;
             });
         }
 
         public static bool Update()
         {
-            var r = 0;
-
-            ExecuteWithoutTransaction(conn =>
+            return ExecuteWithTransaction((conn, trans) =>
             {
-                r = conn.Execute(@"update Person set password='www.lanhuseo.com' where username=@username",
-                    new {username = 2});
-            });
+                var r = conn.Execute(@"update Person set password='www.lanhuseo.com' where username=@username",
+                    new {username = 2}, trans);
 
-            return r > 0;
+                return r;
+            });
         }
 
         public static bool Delete()
         {
-            var r = 0;
+            return ExecuteWithTransaction((conn, trans) =>
+            {
+                var r = conn.Execute(@"delete from Person where id=@id", new {id = 1009}, trans);
 
-            ExecuteWithoutTransaction(conn => { r = conn.Execute(@"delete from Person where id=@id", new {id = 10}); });
-
-            return r > 0;
+                return r;
+            });
         }
 
         public static bool DeleteAfterUpdating()
         {
-            var r = 0;
-
-            ExecuteWithTransaction((conn, trans) =>
+            return ExecuteWithTransaction((conn, trans) =>
             {
-                r = conn.Execute(@"update Person set password='www.lanhuseo.com' where id=@id", new {id = 5}, trans,
+                var r = conn.Execute(@"update Person set password='www.lanhuseo.com' where id=@id", new {id = 1009}, trans,
                     null, null);
-                r += conn.Execute("delete from Person where id=@id", new {id = 6}, trans, null, null);
-            });
+                r += conn.Execute("delete from Person where id=@id", new {id = 1010}, trans, null, null);
 
-            return r > 0;
+                return r;
+            });
         }
 
         /// <summary>
@@ -90,19 +93,24 @@ namespace DapperDemo
         }
 
         /// <summary>
-        ///     Used for curd
+        ///     Used for cud
         /// </summary>
-        /// <param name="action"></param>
-        public static void ExecuteWithTransaction(Action<SqlConnection, IDbTransaction> action)
+        /// <returns>Execute Result</returns>
+        /// <param name="func"></param>
+        public static bool ExecuteWithTransaction(Func<SqlConnection, IDbTransaction, int> func)
         {
+            var r = 0;
+
             UseConnectObj(conn =>
             {
                 IDbTransaction trans = conn.BeginTransaction();
 
-                action(conn, trans);
+                r = func(conn, trans);
 
                 trans.Commit();
             });
+
+            return r > 0;
         }
 
         /// <summary>
